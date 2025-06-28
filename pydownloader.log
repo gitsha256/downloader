@@ -1,0 +1,8 @@
+2025-06-28 21:31:52,870 [INFO] Added to queue: https://ash-speed.hetzner.com/100MB.bin -> E:/New folder/100MB.bin
+2025-06-28 21:31:54,527 [INFO] Starting single-stream download for https://ash-speed.hetzner.com/100MB.bin
+2025-06-28 21:31:54,527 [INFO] Starting single-stream connection for https://ash-speed.hetzner.com/100MB.bin, attempt 1/5
+2025-06-28 21:31:55,669 [WARNING] Range request failed for https://ash-speed.hetzner.com/100MB.bin. Attempting full download.
+2025-06-28 21:31:55,669 [INFO] Starting single-stream connection for https://ash-speed.hetzner.com/100MB.bin, attempt 2/5
+2025-06-28 21:31:56,482 [INFO] Response headers: <CIMultiDictProxy('Server': 'nginx', 'Date': 'Sat, 28 Jun 2025 16:01:55 GMT', 'Content-Type': 'application/octet-stream', 'Content-Length': '104857600', 'Last-Modified': 'Wed, 16 Jun 2021 08:39:25 GMT', 'Connection': 'keep-alive', 'Etag': '"60c9b8bd-6400000"', 'Accept-Ranges': 'bytes')>
+2025-06-28 21:33:46,823 [INFO] Single stream download completed for https://ash-speed.hetzner.com/100MB.bin, speed: 911.88 KB/s, final_size: 100.00 MB, expected: 100.00 MB
+2025-06-28 21:33:46,854 [INFO] Download completed for https://ash-speed.hetzner.com/100MB.bin, final_size: 100.00 MB

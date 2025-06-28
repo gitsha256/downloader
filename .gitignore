@@ -1,0 +1,5 @@
+dist/
+Output/
+*.exe
+*.msi
+*.spec

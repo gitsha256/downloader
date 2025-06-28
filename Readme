@@ -1,0 +1,45 @@
+# PYDownloader
+
+**PYDownloader** is an advanced, lightweight, async file downloader built using Python and `aiohttp`, featuring:
+
+- 🔄 Pause/Resume support  
+- 📶 Live speed & progress tracking  
+- 📥 Multi-format download (ZIP, MP4, MP3, etc.)
+- 🖼️ Beautiful dark-themed UI (using `ttkbootstrap`)
+- 🎮 System tray minimization support
+- 🔔 Sound notification on download completion
+- 🧠 Smart retry and resume support
+
+---
+
+## 🔧 Requirements
+
+Install all dependencies using:
+
+```bash
+pip install -r requirements.txt
+
+python downloader.py
+
+Compiling to EXE (Using PyInstaller)
+Use the following one-liner to build the app:
+##
+pyinstaller --onefile --windowed --icon=icon.ico --add-data "add.png;." --add-data "start.png;." --add-data "pause.png;." --add-data "stop.png;." --add-data "remove.png;." --add-data "download.png;." --name PYDownloader downloader.py
+##
+compiled in dist folder
+
+Creating an Installer (Using Inno Setup)
+Install Inno Setup
+
+Save the following script as downloader_installer.iss in your project root:
+
+Open this .iss file with Inno Setup and click Compile.
+
+Your final installer will be saved as:
+
+Output\PYDownloader-setup.exe
+
+
+**added a test file for testing or editing
+
+

@@ -1,0 +1,6 @@
+aiohttp
+aiofiles
+tqdm
+ttkbootstrap
+pystray
+Pillow
