@@ -159,9 +159,10 @@ async def check_server_support(session, url):
     except Exception as e:
         logging.error(f"Pre-flight check failed: {e}. Defaulting to single-stream.")
         return False, 0
-
-async def download_chunk(session, url, output_file, start_byte, end_byte, pbar, lock, gui, retries=3):
+async def download_chunk(session, url, output_file, start_byte, end_byte, pbar, lock, gui, chunk_id, speed_tracker, retries=3):
     headers = {'Range': f'bytes={start_byte}-{end_byte}', 'User-Agent': 'Mozilla/5.0'}
+    total_chunk_size = end_byte - start_byte + 1
+
     for attempt in range(retries):
         try:
             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=360)) as r:
@@ -169,38 +170,69 @@ async def download_chunk(session, url, output_file, start_byte, end_byte, pbar, 
                 async with aiofiles.open(output_file, 'r+b') as f:
                     await f.seek(start_byte)
                     downloaded_in_chunk = 0
+                    last_time = time.time()
+
                     async for chunk in r.content.iter_chunked(131072):
-                        if app_state["stop_current_download"]: return False
-                        while app_state["is_paused"]: await asyncio.sleep(0.5)
+                        if app_state["stop_current_download"]:
+                            return False
+                        while app_state["is_paused"]:
+                            await asyncio.sleep(0.5)
+
+                        # Trim excess
+                        remaining = total_chunk_size - downloaded_in_chunk
+                        if len(chunk) > remaining:
+                            chunk = chunk[:remaining]
+
                         await f.write(chunk)
-                        chunk_len = len(chunk)
-                        downloaded_in_chunk += chunk_len
+                        downloaded_in_chunk += len(chunk)
+
+                        now = time.time()
+                        duration = now - last_time
+                        if duration > 0:
+                            speed_tracker[chunk_id] = (downloaded_in_chunk / duration)
+
                         async with lock:
-                            pbar.update(chunk_len)
+                            pbar.update(len(chunk))
                             update_gui_progress(pbar, gui)
-                if downloaded_in_chunk >= (end_byte - start_byte + 1):
+
+                        if downloaded_in_chunk >= total_chunk_size:
+                            break
+
+                if downloaded_in_chunk >= total_chunk_size:
                     return True
                 else:
                     logging.warning(f"Chunk {start_byte}-{end_byte} incomplete. Retrying.")
-                    continue
-        except aiohttp.ClientResponseError as e:
-            if app_state["stop_current_download"]: return False
-            if e.status in [502, 503, 504]:
-                wait_time = 5 + (2 ** attempt)
-                logging.warning(f"Chunk {start_byte}-{end_byte} failed with server error {e.status}. Waiting {wait_time}s.")
-                await asyncio.sleep(wait_time)
-            else:
-                logging.error(f"Chunk {start_byte}-{end_byte} failed with unrecoverable client error {e.status}.")
-                return False
         except Exception as e:
-            if app_state["stop_current_download"]: return False
-            logging.error(f"Chunk {start_byte}-{end_byte} failed on attempt {attempt+1}/{retries}: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-            else:
+            if app_state["stop_current_download"]:
                 return False
+            logging.error(f"Chunk {start_byte}-{end_byte} failed on attempt {attempt+1}/{retries}: {e}")
+            await asyncio.sleep(2 ** attempt)
     return False
+#--- Throttling Monitor ---
+async def monitor_throttle(speed_tracker, gui, start_time):
+    THROTTLE_LIMIT = 300 * 1024  # 300 KB/s
+    THROTTLE_DURATION = 10       # seconds
 
+    throttle_start = None
+
+    while True:
+        await asyncio.sleep(1)
+        if app_state["stop_current_download"]:
+            break
+
+        avg_speed = sum(speed_tracker.values()) / len(speed_tracker)
+        logging.debug(f"[THROTTLE] Avg speed: {format_size(avg_speed)}/s")
+
+        if avg_speed < THROTTLE_LIMIT:
+            if throttle_start is None:
+                throttle_start = time.time()
+            elif time.time() - throttle_start >= THROTTLE_DURATION:
+                logging.warning("Detected sustained throttling. Cancelling multi-stream.")
+                app_state["stop_current_download"] = True
+                break
+        else:
+            throttle_start = None
+# --- Multi-Stream and Single-Stream Download Logic ---
 async def multi_stream_download(session, url, output_file, total_size, pbar, lock, gui, num_connections):
     logging.info(f"Starting multi-stream download for {url} with {num_connections} connections.")
     try:
@@ -212,16 +244,20 @@ async def multi_stream_download(session, url, output_file, total_size, pbar, loc
 
     chunk_size = total_size // num_connections
     tasks = []
+    speed_tracker = {i: 0 for i in range(num_connections)}
+    start_time = time.time()
+
     for i in range(num_connections):
         start = i * chunk_size
-        end = start + chunk_size - 1
-        if i == num_connections - 1: end = total_size - 1
-        await asyncio.sleep(random.uniform(0.1, 0.4))
-        if app_state["stop_current_download"]: return False
-        tasks.append(download_chunk(session, url, output_file, start, end, pbar, lock, gui))
+        end = start + chunk_size - 1 if i < num_connections - 1 else total_size - 1
+        tasks.append(download_chunk(session, url, output_file, start, end, pbar, lock, gui, i, speed_tracker))
 
+    monitor_task = asyncio.create_task(monitor_throttle(speed_tracker, gui, start_time))
     results = await asyncio.gather(*tasks)
+    monitor_task.cancel()
+
     return all(results)
+
 
 async def single_stream_download(session, url, output_file, pbar, lock, gui, retries=5):
     logging.info(f"Starting single-stream download for {url}")
@@ -272,17 +308,18 @@ async def download_manager_async(url, output_file, gui):
     try:
         async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar()) as session:
             with tqdm(total=None, unit='B', unit_scale=True, desc="Downloading", file=io.StringIO()) as pbar:
-                supports_multi, total_size = await check_server_support(session, url)
+                hostname = urlparse(url).hostname or ""
+                if "seedr.cc" in hostname:
+                    supports_multi = False
+                    total_size = 0
+                    logging.info("Seedr detected, using single-stream download.")
+                else:
+                    supports_multi, total_size = await check_server_support(session, url)
 
                 if supports_multi and total_size > (MIN_SIZE_FOR_MULTI_STREAM_MB * 1024 * 1024):
                     pbar.total = total_size
-                    hostname = urlparse(url).hostname or ""
-                    if "seedr.cc" in hostname:
-                        connection_attempts = [2]  # Only allow 2 for seedr
-                    else:
-                        connection_attempts = sorted(set([min(8, total_size // (10* 1024 * 1024)), 4, 2]), reverse=True)
-
-
+                    connection_attempts = sorted(set([min(8, total_size // (10* 1024 * 1024)), 4, 2]), reverse=True)
+                        
                     for conn_count in connection_attempts:
                         if app_state["stop_current_download"]: break
                         pbar.n = 0
@@ -322,35 +359,30 @@ async def download_manager_async(url, output_file, gui):
             logging.warning(f"A partial file may be left at {output_file}")
 
 # --- App Logic & GUI ---
-
 async def process_queue_async(gui, selected_index=None):
-    # This logic now correctly handles downloading one or all items
-    items_to_process = []
     if selected_index is not None:
-        if 0 <= selected_index < len(app_state["download_queue"]):
-            items_to_process.append((selected_index, app_state["download_queue"][selected_index]))
-    else:
-        # Create a list of all items to process so pops don't affect the loop
-        items_to_process = list(enumerate(app_state["download_queue"]))[::-1] # Reverse to pop correctly
-
-    for index, job in items_to_process:
-        if app_state["stop_current_download"]:
-            logging.info("Queue processing stopped by user.")
-            break
-        
+        # Download only the selected item
+        job = app_state["download_queue"][selected_index]
         url, output_file = job['url'], job['output_file']
         gui['root'].after(0, gui['current_file_label'].config, {"text": f"Downloading: {os.path.basename(output_file)}"})
         await download_manager_async(url, output_file, gui)
-        
+
         if not app_state["stop_current_download"]:
-            # Find the actual index in the current queue before deleting
-            try:
-                current_idx = app_state["download_queue"].index(job)
-                app_state["download_queue"].pop(current_idx)
-                gui['root'].after(0, gui['queue_listbox'].delete, current_idx)
-            except ValueError:
-                logging.warning("Tried to remove an item that was already processed.")
-    
+            gui['root'].after(0, gui['queue_listbox'].delete, selected_index)
+            app_state["download_queue"].pop(selected_index)
+
+    else:
+        # Download all in order
+        while app_state["download_queue"] and not app_state["stop_current_download"]:
+            job = app_state["download_queue"][0]
+            url, output_file = job['url'], job['output_file']
+            gui['root'].after(0, gui['current_file_label'].config, {"text": f"Downloading: {os.path.basename(output_file)}"})
+            await download_manager_async(url, output_file, gui)
+
+            if not app_state["stop_current_download"]:
+                gui['root'].after(0, gui['queue_listbox'].delete, 0)
+                app_state["download_queue"].pop(0)
+
     app_state["is_processing"] = False
     gui['root'].after(0, update_button_states, gui)
     gui['root'].after(0, gui['current_file_label'].config, {"text": "Idle"})
@@ -359,7 +391,7 @@ async def process_queue_async(gui, selected_index=None):
     gui['root'].after(0, lambda: gui['speed_label'].config(text="Speed: N/A"))
     gui['root'].after(0, lambda: gui['percent_label'].config(text="Progress: 0.00%"))
     gui['root'].after(0, lambda: gui['progress_var'].set(0))
-
+# --- Asyncio Loop ---
 def start_asyncio_loop():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
