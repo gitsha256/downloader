@@ -21,14 +21,9 @@ DisableWelcomePage=no
 ArchitecturesInstallIn64BitMode=x64
 
 [Files]
-Source: "PYDownloader.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\PYDownloader.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "add.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "start.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "pause.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "stop.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "remove.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "download.png"; DestDir: "{app}"; Flags: ignoreversion
+
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

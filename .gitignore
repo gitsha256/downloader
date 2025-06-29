@@ -1,5 +1,6 @@
 dist/
 Output/
+build/
 *.exe
 *.msi
 *.spec
