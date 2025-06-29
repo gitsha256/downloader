@@ -511,15 +511,6 @@ def main():
     queue_frame.pack(fill="x", padx=5, pady=5)  # Removed expand=True
     queue_listbox = tk.Listbox(queue_frame, font=("Segoe UI", 10), selectmode="extended", height=5)
     queue_listbox.pack(fill="both", expand=True)
-    #----controls---
-    control_frame = ttk.Frame(root)
-    control_frame.pack(fill="x", padx=10, pady=10)
-    start_btn = ttk.Button(control_frame, text="Start", style='success.TButton')
-    pause_btn = ttk.Button(control_frame, text="Pause", style='warning.TButton', state="disabled")
-    stop_btn = ttk.Button(control_frame, text="Stop", style='danger.TButton', state="disabled")
-    start_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)
-    pause_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)
-    stop_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)    
 
     completed_frame = ttk.LabelFrame(root, text="Completed Downloads", padding=5)
     completed_frame.pack(fill="x", padx=10, pady=5)  # Removed expand=True
@@ -550,6 +541,15 @@ def main():
     time_label.pack(side="left", padx=5)
 
     # --- Controls ---
+    control_frame = ttk.Frame(root)
+    control_frame.pack(fill="x", padx=10, pady=10)
+    start_btn = ttk.Button(control_frame, text="Start", style='success.TButton')
+    pause_btn = ttk.Button(control_frame, text="Pause", style='warning.TButton', state="disabled")
+    stop_btn = ttk.Button(control_frame, text="Stop", style='danger.TButton', state="disabled")
+    start_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)
+    pause_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)
+    stop_btn.pack(side="left", expand=True, fill="x", padx=2, ipady=2)
+
     bottom_frame = ttk.Frame(root)
     bottom_frame.pack(fill="x", padx=10, pady=(5,10))
     remove_button = ttk.Button(bottom_frame, text="Remove Selected", command=lambda: remove_from_queue(queue_listbox))
